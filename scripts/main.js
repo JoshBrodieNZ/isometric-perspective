@@ -8,18 +8,19 @@ import {
   handleRefreshToken,
   handleDeleteToken
  } from './token.js';
- 
-import { 
+
+import {
   handleRenderTileConfig,
   addLinkedWallsListeners,
   handleCreateTile,
   handleUpdateTile,
-  handleRefreshTile
+  handleRefreshTile,
+  hookTileConfigManager
  } from './tile.js';
 
-import { 
+import {
   handleRenderTokenHUD,
-  handleRenderTileHUD 
+  handleRenderTileHUD
 } from './hud.js';
 
 import { registerSortingConfig } from './autosorting.js';
@@ -247,9 +248,17 @@ Hooks.on("renderTokenHUD", handleRenderTokenHUD);
 Hooks.on("renderTileHUD", handleRenderTileHUD);
 
 //tile config
-Hooks.on("ready", handleRenderTileConfig);
+Hooks.once('setup', function() {
+  // Setup code if needed
+});
+
+Hooks.on("ready", () => {
+  // Hook into the TileConfig manager to intercept class assignments
+  // This ensures we patch Monk's ActiveTileConfig (or others) immediately when assigned
+  // We do this on ready because CONFIG.Tile.sheetClasses is not populated during setup
+  hookTileConfigManager();
+});
 Hooks.on("renderTileConfig", addLinkedWallsListeners);
-// Hooks.on("renderTileConfig", handleRenderTileConfig);
 //tile management
 Hooks.on("createTile", handleCreateTile);
 Hooks.on("updateTile", handleUpdateTile);
