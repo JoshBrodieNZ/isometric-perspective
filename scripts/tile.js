@@ -1,7 +1,11 @@
 import { isometricModuleConfig } from './consts.js';
 import { applyIsometricTransformation } from './transform.js';
 
-export async function handleRenderTileConfig(app, html, data) {
+export function patchTileConfigClass(ConfigClass) {
+  if (!ConfigClass) return;
+  
+  // Avoid double-patching
+  if (Object.prototype.hasOwnProperty.call(ConfigClass, '_isometricPatched')) return;
 
   const label = game.i18n.localize("isometric-perspective.tab_isometric_name");
   const tabGroup = "sheet";
@@ -9,36 +13,68 @@ export async function handleRenderTileConfig(app, html, data) {
   const icon = "fas fa-cube"
   const isoTemplatePath = 'modules/isometric-perspective/templates/tile-config.hbs'
 
-  // Tile config data
-  const FoundryTileConfig = foundry.applications.sheets.TileConfig;
-  const DefaultTileConfig = Object.values(CONFIG.Tile.sheetClasses.base).find((d) => d.default)?.cls;
-  const TileConfig = DefaultTileConfig?.prototype instanceof FoundryTileConfig ? DefaultTileConfig : FoundryTileConfig;
-  
-  // Adding the isometric tab data to the scene config parts
-  TileConfig.TABS.sheet.tabs.push({ id: tabId, group: tabGroup, label , icon: icon }); 
-  
-  // Adding the part template
-  TileConfig.PARTS.isometric = {template: isoTemplatePath};
+  // 1. Patch TABS
+  // Check if TABS is a getter or writable property
+  const tabsDescriptor = Object.getOwnPropertyDescriptor(ConfigClass, 'TABS');
+  if (tabsDescriptor && (tabsDescriptor.get || !tabsDescriptor.writable)) {
+    Object.defineProperty(ConfigClass, 'TABS', {
+      get: function() {
+        const tabs = tabsDescriptor.get ? tabsDescriptor.get.call(this) : tabsDescriptor.value;
+        if (tabs?.sheet?.tabs && !tabs.sheet.tabs.some(t => t.id === tabId)) {
+          tabs.sheet.tabs.push({ id: tabId, group: tabGroup, label, icon: icon });
+        }
+        return tabs;
+      },
+      configurable: true
+    });
+  } else if (ConfigClass.TABS?.sheet?.tabs) {
+    if (!ConfigClass.TABS.sheet.tabs.some(t => t.id === tabId)) {
+      ConfigClass.TABS.sheet.tabs.push({ id: tabId, group: tabGroup, label, icon: icon });
+    }
+  }
 
-  const footerPart = TileConfig.PARTS.footer;
-  delete TileConfig.PARTS.footer;
-  TileConfig.PARTS.footer = footerPart;
+  // 2. Patch PARTS
+  const partsDescriptor = Object.getOwnPropertyDescriptor(ConfigClass, 'PARTS');
+  if (partsDescriptor && (partsDescriptor.get || !partsDescriptor.writable)) {
+    Object.defineProperty(ConfigClass, 'PARTS', {
+      get: function() {
+        const parts = partsDescriptor.get ? partsDescriptor.get.call(this) : partsDescriptor.value;
+        if (!parts.isometric) {
+          parts.isometric = { template: isoTemplatePath };
+          if (parts.footer) {
+            const footer = parts.footer;
+            delete parts.footer;
+            parts.footer = footer;
+          }
+        }
+        return parts;
+      },
+      configurable: true
+    });
+  } else if (ConfigClass.PARTS) {
+    ConfigClass.PARTS.isometric = { template: isoTemplatePath };
+    if (ConfigClass.PARTS.footer) {
+      const footer = ConfigClass.PARTS.footer;
+      delete ConfigClass.PARTS.footer;
+      ConfigClass.PARTS.footer = footer;
+    }
+  }
 
-  // Override part context to include the isometric-perspective config data
-  const defaultRenderPartContext = TileConfig.prototype._preparePartContext;
-  TileConfig.prototype._preparePartContext = async function(partId, context, options) {
+  // 3. Override _preparePartContext
+  const originalPreparePartContext = ConfigClass.prototype._preparePartContext;
+  ConfigClass.prototype._preparePartContext = async function(partId, context, options) {
     if (partId === "isometric") {
       const flags = this.document.flags[isometricModuleConfig.MODULE_ID] ?? null;
-
       return {
         ...(flags ?? {}),
         document: this.document,
         tab: context.tabs[partId],
-      }
+      };
     }
-    return defaultRenderPartContext.call(this, partId, context, options);
-  }
+    return originalPreparePartContext.call(this, partId, context, options);
+  };
 
+  ConfigClass._isometricPatched = true;
 }
 
 export function addLinkedWallsListeners(app, html, context, options){

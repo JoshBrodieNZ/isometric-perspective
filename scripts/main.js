@@ -10,11 +10,11 @@ import {
  } from './token.js';
  
 import { 
-  handleRenderTileConfig,
   addLinkedWallsListeners,
   handleCreateTile,
   handleUpdateTile,
-  handleRefreshTile
+  handleRefreshTile,
+  patchTileConfigClass
  } from './tile.js';
 
 import { 
@@ -247,9 +247,22 @@ Hooks.on("renderTokenHUD", handleRenderTokenHUD);
 Hooks.on("renderTileHUD", handleRenderTileHUD);
 
 //tile config
-Hooks.on("ready", handleRenderTileConfig);
+Hooks.on("ready", () => {
+  // Patch the default TileConfig class
+  if (CONFIG.Tile?.sheetClasses?.base?.['core.TileConfig']?.cls) {
+    patchTileConfigClass(CONFIG.Tile.sheetClasses.base['core.TileConfig'].cls);
+  }
+});
+
+// Hook for Monk's Active Tiles
+Hooks.on("monksActiveTilesReady", () => {
+  // Patch the new ActiveTileConfig class when Monk's is ready
+  if (CONFIG.Tile?.sheetClasses?.base?.['core.TileConfig']?.cls) {
+    patchTileConfigClass(CONFIG.Tile.sheetClasses.base['core.TileConfig'].cls);
+  }
+});
+
 Hooks.on("renderTileConfig", addLinkedWallsListeners);
-// Hooks.on("renderTileConfig", handleRenderTileConfig);
 //tile management
 Hooks.on("createTile", handleCreateTile);
 Hooks.on("updateTile", handleUpdateTile);
